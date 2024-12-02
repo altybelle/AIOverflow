@@ -4,5 +4,6 @@ env
 # Ignore .env
 .env
 
-# Ignore .pdf
+# Ignore auxiliar files
 *.pdf
+*.txt

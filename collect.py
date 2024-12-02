@@ -30,20 +30,17 @@ def get_token():
         print(f"Error fetching token: {response.status_code} - {response.text}")
         return None
 
-def check_if_question_exists(question):
-    result = collection.find_one({ "question_id": question["question_id"] })
-
-    if result:
-        return True
-
-    return False
+def check_matching_questions(question_ids):
+    found_questions = collection.find({ "question_id": { "$in": question_ids }}, { "question_id": 1})
+    found_ids = [ question["question_id" ] for question in found_questions ]
+    return found_ids
 
 def save_questions(questions):
     collection.insert_many(questions)
-    print('Questões registradas com sucesso no banco de dados.')
+    print(f'{len(questions)} questões registradas no banco de dados.')
 
-def fetch_all_questions(tags=None, sort="activity", min_score=None, from_date=None, to_date=None):
-    all_questions = []
+def fetch_all_questions(tags=None, sort="activity", min_score=None, from_date=None, to_date=None, start_page=None):
+    obtained_questions = []
     params = {
         "order": "desc",
         "sort": sort,
@@ -64,9 +61,9 @@ def fetch_all_questions(tags=None, sort="activity", min_score=None, from_date=No
 
     has_more = True
     quota_remaining = 10_000 
-    max_requests_per_second = 25
+    max_requests_per_second = 28
 
-    page = 1
+    page = start_page if start_page else 1
 
     while has_more and quota_remaining > 0:
         params["page"] = page
@@ -74,23 +71,31 @@ def fetch_all_questions(tags=None, sort="activity", min_score=None, from_date=No
 
         if response.status_code == 200:
             data = response.json()
+            
             questions = data.get("items", [])
+            question_ids = [ question["question_id"] for question in questions if "question_id" in question ]
 
-            for question in data.get("items", []):
-                if not check_if_question_exists(question):
-                    all_questions.append(question)
-                    
+            matching_questions = check_matching_questions(question_ids)
+
+            obtained_questions = [
+                question for question in questions if question["question_id"] not in matching_questions
+            ]
+
             has_more = data.get("has_more", False)
             quota_remaining = data.get("quota_remaining", 0)
 
             print(f"Página {page} adquirida. Quantidade de requisições restantes: {quota_remaining}.")
             
+            if len(obtained_questions) > 0:
+                save_questions(obtained_questions)
+                obtained_questions = []
+            
             page += 1
 
-            if 'backoff' in data: 
-                print(f'Backoff: {data["backoff"]}')
-                time.sleep(int(data["backoff"]) + 1)
-
+            if 'backoff' in data:
+                backoff = int(data["backoff"])
+                print(f'Aguardando por {backoff + 1} segundos.')
+                time.sleep(backoff + 1)
 
             if not has_more or quota_remaining <= 0:
                 break
@@ -101,14 +106,11 @@ def fetch_all_questions(tags=None, sort="activity", min_score=None, from_date=No
             print(f"Erro: {response.text}")
             break
 
-    if len(all_questions) > 0:
-        save_questions(all_questions)
-
-    return all_questions
+    return quota_remaining
 
 if __name__ == '__main__':
-    start_date = datetime(2024, 2, 1)  
-    end_date = datetime.now()          
+    start_date = datetime(2023, 1, 1)  
+    end_date = datetime(2023, 12, 31)  
     
     current_start = start_date
     while current_start < end_date:
@@ -118,6 +120,9 @@ if __name__ == '__main__':
             current_end = end_date
 
         print(f"Fetching questions from {current_start} to {current_end}")
-        fetch_all_questions(from_date=current_start, to_date=current_end)
+        quota_remaining = fetch_all_questions(from_date=current_start, to_date=current_end, start_page=26)
         
-        current_start = current_end + timedelta(seconds=1)
+        if quota_remaining > 0:
+            current_start = current_end + timedelta(seconds=1)
+        else: 
+            break

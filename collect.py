@@ -39,7 +39,7 @@ def save_questions(questions):
     collection.insert_many(questions)
     print(f'{len(questions)} questões registradas no banco de dados.')
 
-def fetch_all_questions(tags=None, sort="activity", min_score=None, from_date=None, to_date=None, start_page=None):
+def fetch_all_questions(tags=None, sort="creation", min_score=None, from_date=None, to_date=None, start_page=None):
     obtained_questions = []
     params = {
         "order": "desc",
@@ -120,7 +120,8 @@ if __name__ == '__main__':
             current_end = end_date
 
         print(f"Fetching questions from {current_start} to {current_end}")
-        quota_remaining = fetch_all_questions(from_date=current_start, to_date=current_end, start_page=26)
+        quota_remaining = fetch_all_questions(from_date=current_start, to_date=current_end)
+        #start_page=x
         
         if quota_remaining > 0:
             current_start = current_end + timedelta(seconds=1)

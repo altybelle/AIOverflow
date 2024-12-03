@@ -10,9 +10,12 @@ load_dotenv()
 API_URL = "https://api.stackexchange.com/2.3/questions"
 condition = threading.Condition()
 global_backoff = 0  # Controle de backoff global para todas as threads.
+global_quota_remaining = 10_000
 
 def fetch_questions_for_month(access_token, start_date, end_date):
     global global_backoff
+    global global_quota_remaining
+
     params = {
         "order": "desc",
         "sort": "creation",
@@ -26,12 +29,16 @@ def fetch_questions_for_month(access_token, start_date, end_date):
 
     has_more = True
     page = 1
-    quota_remaining = 10_000
 
-    while has_more and quota_remaining > 0:
+    while has_more:
         with condition:
+            # Aguarda o backoff terminar.
             while global_backoff > 0:
                 condition.wait()
+            # Verifica se há quota restante.
+            if global_quota_remaining <= 0:
+                print(f"Quota esgotada. Encerrando thread para o período {start_date} - {end_date}.")
+                break
 
         params["page"] = page
         response = requests.get(API_URL, params=params)
@@ -48,9 +55,13 @@ def fetch_questions_for_month(access_token, start_date, end_date):
             ]
 
             has_more = data.get("has_more", False)
-            quota_remaining = data.get("quota_remaining", 0)
 
-            print(f'{start_date} de {end_date}. {response.status_code} - Página {page}: {len(obtained_questions)}. Quota remaining: {quota_remaining}.')
+            # Atualiza o valor de global_quota_remaining.
+            with condition:
+                global_quota_remaining = data.get("quota_remaining", global_quota_remaining)
+                print(f"Atualizado global_quota_remaining: {global_quota_remaining}. Thread período {start_date} - {end_date}.")
+
+            print(f'{start_date} de {end_date}. {response.status_code} - Página {page}: {len(obtained_questions)}. Quota remaining: {global_quota_remaining}.')
 
             if len(obtained_questions) > 0:
                 save_questions(obtained_questions)

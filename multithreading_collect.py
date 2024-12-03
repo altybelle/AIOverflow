@@ -1,118 +1,97 @@
 from core import *
-import threading
-import time
-import requests
-import os
-from datetime import datetime, timedelta
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
+import requests, json
+import time, os
+import threading
 
 load_dotenv()
 
 API_URL = "https://api.stackexchange.com/2.3/questions"
+condition = threading.Condition()
+global_backoff = 0  # Controle de backoff global para todas as threads.
 
-pause_event = threading.Event()  
-lock = threading.Lock()  
-
-def fetch_all_questions_multithread(access_token=None, from_date=None, to_date=None):
-    print(f"Iniciando thread {threading.current_thread().name}")
-    print(f"Obtendo questões de {from_date} até {to_date}.")
-
-    try:
-        fetch_all_questions(access_token=access_token, from_date=from_date, to_date=to_date)
-    except Exception as err:
-        print(f"Erro na thread {threading.current_thread().name}: {str(err)}.")
-
-def fetch_all_questions(access_token=None, tags=None, sort="creation", min_score=None, from_date=None, to_date=None, start_page=None):
-    obtained_questions = []
-
+def fetch_questions_for_month(access_token, start_date, end_date):
+    global global_backoff
     params = {
         "order": "desc",
-        "sort": sort,
+        "sort": "creation",
         "site": "stackoverflow",
         "pagesize": 100,
         "access_token": access_token,
-        "key": os.getenv("STACK_APP_KEY"),
+        "key": os.getenv('STACK_APP_KEY'),
+        "fromdate": int(start_date.timestamp()),
+        "todate": int(end_date.timestamp())
     }
 
-    if from_date:
-        params["fromdate"] = int(from_date.timestamp())
-    if to_date:
-        params["todate"] = int(to_date.timestamp())
-
     has_more = True
+    page = 1
     quota_remaining = 10_000
 
-    page = start_page if start_page else 1
-
     while has_more and quota_remaining > 0:
-        if pause_event.is_set():
-            print(f"Thread {threading.current_thread().name} aguardando fim do backoff...")
-            pause_event.wait()
+        with condition:
+            while global_backoff > 0:
+                condition.wait()
 
-            params["page"] = page
-            response = requests.get(API_URL, params=params)
+        params["page"] = page
+        response = requests.get(API_URL, params=params)
 
-            if response.status_code == 200:
-                data = response.json()
+        if response.status_code == 200:
+            data = response.json()
 
-                printf(f"{threading.current_thread().name} - {response.status_code}!")
+            questions = data.get("items", [])
+            question_ids = [question["question_id"] for question in questions if "question_id" in question]
 
-                questions = data.get("items", [])
-                question_ids = [question["question_id"] for question in questions if "question_id" in question]
+            matching_questions = check_matching_questions(question_ids)
+            obtained_questions = [
+                question for question in questions if question["question_id"] not in matching_questions
+            ]
 
-                matching_questions = check_matching_questions(question_ids)
+            has_more = data.get("has_more", False)
+            quota_remaining = data.get("quota_remaining", 0)
 
-                obtained_questions = [
-                    question for question in questions if question["question_id"] not in matching_questions
-                ]
+            print(f'{start_date} de {end_date}. {response.status_code} - Página {page}: {len(obtained_questions)}. Quota remaining: {quota_remaining}.')
 
-                has_more = data.get("has_more", False)
-                quota_remaining = data.get("quota_remaining", 0)
+            if len(obtained_questions) > 0:
+                save_questions(obtained_questions)
 
-                if len(obtained_questions) > 0:
-                    save_questions(obtained_questions)
-                    obtained_questions = []
-                
-                page += 1
+            page += 1
 
-                if "backoff" in data:
-                    backoff = int(data["backoff"])
-                    print(f"Backoff detectado: aguardando por {backoff + 1} segundos.")
-                    pause_event.set()
-                    time.sleep(backoff + 1)
-                    pause_event.clear()
+            if 'backoff' in data:
+                backoff = int(data["backoff"])
+                print(f'Backoff detectado: {backoff} segundos. Pausando todas as threads.')
+                with condition:
+                    global_backoff = backoff
+                    condition.notify_all()
+                time.sleep(backoff + 1)
+                with condition:
+                    global_backoff = 0
+                    condition.notify_all()
 
-                if not has_more:
-                    print(f"Acabadas páginas do período de {from_date} até {to_date}.")
-                    break
+            time.sleep(0.5)
 
-                time.sleep(0.5)
-            else:
-                raise Exception(f"Erro ao adquirir dados: {response.status_code} - {response.text}")
+        else:
+            print(f"Falha ao adquirir dados: {response.status_code}")
+            print(f"Erro: {response.text}")
+            break
 
-if __name__ == "__main__":
-    start_date = datetime(2023, 3, 1)
-    end_date = datetime(2023, 12, 31)
+def main():
+    start_date = datetime(2022, 1, 1)
+    end_date = datetime(2022, 12, 31)
     access_token = get_token()
 
+    current_start = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
     threads = []
-    n_threads = 0
 
-    current_start = start_date
     while current_start <= end_date:
         current_end = (current_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(seconds=1)
-        
+
         if current_end > end_date:
             current_end = end_date.replace(hour=23, minute=59, second=59)
 
-        thread = threading.Thread(
-            target=fetch_all_questions_multithread,
-            name=f"thread_{n_threads}",
-            args=(access_token, current_start, current_end),
-        )
-
+        print(f'Criando thread para o período de {current_start} até {current_end}.')
+        thread = threading.Thread(target=fetch_questions_for_month, args=(access_token, current_start, current_end))
         threads.append(thread)
-        n_threads += 1
 
         current_start = current_end + timedelta(days=1)
         current_start = current_start.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -123,4 +102,5 @@ if __name__ == "__main__":
     for thread in threads:
         thread.join()
 
-    print("Todas as threads concluíram.")
+if __name__ == '__main__':
+    main()

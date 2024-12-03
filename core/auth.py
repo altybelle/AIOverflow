@@ -15,7 +15,7 @@ def get_token():
     response = requests.post('https://stackoverflow.com/oauth/access_token/json', payload)
 
     if response.status_code == 200:
-        return response.json().get('access_token')
+        return response.json().get('access_token', '')
     else:
         print(f"Error fetching token: {response.status_code} - {response.text}")
         return None

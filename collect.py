@@ -32,7 +32,7 @@ def fetch_all_questions(access_token=None, tags=None, sort="creation", min_score
 
     has_more = True
     quota_remaining = 10_000 
-    max_requests_per_second = 28
+    max_requests_per_second = 27
 
     page = start_page if start_page else 1
 
@@ -55,7 +55,7 @@ def fetch_all_questions(access_token=None, tags=None, sort="creation", min_score
             has_more = data.get("has_more", False)
             quota_remaining = data.get("quota_remaining", 0)
 
-            print(f'{response.status_code} - Página {page}: {len(obtained_questions)}!')
+            print(f'{response.status_code} - Página {page}: {len(obtained_questions)}. Quota remaining: {quota_remaining}.')
 
             if len(obtained_questions) > 0:
                 save_questions(obtained_questions)

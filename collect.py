@@ -79,18 +79,22 @@ def fetch_all_questions(access_token=None, tags=None, sort="creation", min_score
 
     return quota_remaining
 
+from datetime import datetime, timedelta
+
 if __name__ == '__main__':
     start_date = datetime(2023, 3, 1)
     end_date = datetime(2023, 12, 31)
     access_token = get_token()
 
-    current_start = start_date
+    current_start = start_date.replace(hour=0, minute=0, second=0, microsecond=0) 
     while current_start <= end_date:
         current_end = (current_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(seconds=1)
+        
         if current_end > end_date:
-            current_end = end_date
+            current_end = end_date.replace(hour=23, minute=59, second=59)
 
         print(f'Iniciando obtenção de perguntas de {current_start} até {current_end}.')
         fetch_all_questions(access_token=access_token, from_date=current_start, to_date=current_end)
 
         current_start = current_end + timedelta(days=1)
+        current_start = current_start.replace(hour=0, minute=0, second=0, microsecond=0)

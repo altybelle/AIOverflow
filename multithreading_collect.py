@@ -41,7 +41,6 @@ def fetch_all_questions(access_token=None, tags=None, sort="creation", min_score
 
     has_more = True
     quota_remaining = 10_000
-    max_requests_per_second = 28
 
     page = start_page if start_page else 1
 
@@ -87,7 +86,7 @@ def fetch_all_questions(access_token=None, tags=None, sort="creation", min_score
                     print(f"Acabadas páginas do período de {from_date} até {to_date}.")
                     break
 
-                time.sleep(1 / max_requests_per_second)
+                time.sleep(0.5)
             else:
                 raise Exception(f"Erro ao adquirir dados: {response.status_code} - {response.text}")
 
@@ -102,8 +101,9 @@ if __name__ == "__main__":
     current_start = start_date
     while current_start <= end_date:
         current_end = (current_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(seconds=1)
+        
         if current_end > end_date:
-            current_end = end_date
+            current_end = end_date.replace(hour=23, minute=59, second=59)
 
         thread = threading.Thread(
             target=fetch_all_questions_multithread,
@@ -115,6 +115,7 @@ if __name__ == "__main__":
         n_threads += 1
 
         current_start = current_end + timedelta(days=1)
+        current_start = current_start.replace(hour=0, minute=0, second=0, microsecond=0)
 
     for thread in threads:
         thread.start()

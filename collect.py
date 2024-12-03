@@ -10,14 +10,14 @@ load_dotenv()
 
 API_URL = "https://api.stackexchange.com/2.3/questions"
 
-def fetch_all_questions(tags=None, sort="creation", min_score=None, from_date=None, to_date=None, start_page=None):
+def fetch_all_questions(access_token=None, tags=None, sort="creation", min_score=None, from_date=None, to_date=None, start_page=None):
     obtained_questions = []
     params = {
         "order": "desc",
         "sort": sort,
         "site": "stackoverflow",
         "pagesize": 100,
-        "access_token": get_token(),
+        "access_token": access_token,
         "key": os.getenv('STACK_APP_KEY'),
     }
 
@@ -55,6 +55,8 @@ def fetch_all_questions(tags=None, sort="creation", min_score=None, from_date=No
             has_more = data.get("has_more", False)
             quota_remaining = data.get("quota_remaining", 0)
 
+            print(f'{response.status_code} - Página {page}: {len(obtained_questions)}!')
+
             if len(obtained_questions) > 0:
                 save_questions(obtained_questions)
                 obtained_questions = []
@@ -78,20 +80,17 @@ def fetch_all_questions(tags=None, sort="creation", min_score=None, from_date=No
     return quota_remaining
 
 if __name__ == '__main__':
-    start_date = datetime(2023, 3, 1)  
-    end_date = datetime(2023, 12, 31)  
-    current_start = start_date
+    start_date = datetime(2023, 3, 1)
+    end_date = datetime(2023, 12, 31)
+    access_token = get_token()
 
-    while current_start < end_date:
-        current_end = (current_start + timedelta(days=31)).replace(day=1) - timedelta(seconds=1)
-        
+    current_start = start_date
+    while current_start <= end_date:
+        current_end = (current_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(seconds=1)
         if current_end > end_date:
             current_end = end_date
 
-        print(f'Obtendo questões de {current_start} até {current_end}:')
-        quota_remaining = fetch_all_questions(from_date=current_start, to_date=current_end)
-        
-        if quota_remaining > 0:
-            current_start = current_end + timedelta(seconds=1)
-        else: 
-            break
+        print(f'Iniciando obtenção de perguntas de {current_start} até {current_end}.')
+        fetch_all_questions(access_token=access_token, from_date=current_start, to_date=current_end)
+
+        current_start = current_end + timedelta(days=1)

@@ -18,4 +18,3 @@ def check_matching_questions(question_ids):
 
 def save_questions(questions):
     collection.insert_many(questions)
-    print(f'{len(questions)} questões registradas no banco de dados.')

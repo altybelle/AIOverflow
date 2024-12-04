@@ -10,8 +10,7 @@ load_dotenv()
 
 API_URL = "https://api.stackexchange.com/2.3/questions"
 
-def fetch_all_questions(access_token=None, tags=None, sort="creation", min_score=None, from_date=None, to_date=None, start_page=None):
-    obtained_questions = []
+def fetch_all_questions(access_token=None, tags=None, sort="creation", min_score=None, from_date=None, to_date=None):
     params = {
         "order": "desc",
         "sort": sort,
@@ -32,9 +31,8 @@ def fetch_all_questions(access_token=None, tags=None, sort="creation", min_score
 
     has_more = True
     quota_remaining = 10_000 
-    max_requests_per_second = 27
-
-    page = start_page if start_page else 1
+    max_requests_per_second = 30
+    page = 1
 
     while has_more and quota_remaining > 0:
         params["page"] = page
@@ -44,7 +42,7 @@ def fetch_all_questions(access_token=None, tags=None, sort="creation", min_score
             data = response.json()
             
             questions = data.get("items", [])
-            question_ids = [ question["question_id"] for question in questions if "question_id" in question ]
+            question_ids = [question["question_id"] for question in questions if "question_id" in question]
 
             matching_questions = check_matching_questions(question_ids)
 
@@ -59,8 +57,7 @@ def fetch_all_questions(access_token=None, tags=None, sort="creation", min_score
 
             if len(obtained_questions) > 0:
                 save_questions(obtained_questions)
-                obtained_questions = []
-            
+
             page += 1
 
             if 'backoff' in data:
@@ -79,22 +76,24 @@ def fetch_all_questions(access_token=None, tags=None, sort="creation", min_score
 
     return quota_remaining
 
-from datetime import datetime, timedelta
-
 if __name__ == '__main__':
-    start_date = datetime(2023, 3, 1)
-    end_date = datetime(2023, 12, 31)
+    start_date = datetime(2022, 1, 1)
+    end_date = datetime(2022, 12, 31)
     access_token = get_token()
 
-    current_start = start_date.replace(hour=0, minute=0, second=0, microsecond=0) 
+    # Criar períodos mensais
+    current_start = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    periods = []
+
     while current_start <= end_date:
         current_end = (current_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(seconds=1)
-        
         if current_end > end_date:
             current_end = end_date.replace(hour=23, minute=59, second=59)
+        periods.append((current_start, current_end))
+        current_start = current_end + timedelta(seconds=1)
 
-        print(f'Iniciando obtenção de perguntas de {current_start} até {current_end}.')
-        fetch_all_questions(access_token=access_token, from_date=current_start, to_date=current_end)
-
-        current_start = current_end + timedelta(days=1)
-        current_start = current_start.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Processar períodos
+    for start, end in periods:
+        print(f'Iniciando obtenção de perguntas de {start} até {end}.')
+        fetch_all_questions(access_token=access_token, from_date=start, to_date=end)
+        time.sleep(1)  # Espera de 1 segundo após processar o mês

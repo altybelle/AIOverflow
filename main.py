@@ -20,7 +20,7 @@ def main():
     intervals = fullyear(year)
 
     if multithread:
-        print(f'To be implemented...')
+        multithread(access_token, intervals, page)
     else:
         sequential(access_token, intervals, page)
         

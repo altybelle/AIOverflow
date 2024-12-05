@@ -49,9 +49,9 @@ def sequential(access_token, intervals, initial_page):
     log("All intervals have been processed.", level=logging.INFO)
 
 def multithreading(access_token, intervals, initial_page):
-
-    with ThreadPoolExecutor(max_workers=12) as executor:
-        
+    tasks = []
+    with ThreadPoolExecutor(max_workers=12) as tpe:
+        tasks.append(tpe.submit())
 
     return 0
 

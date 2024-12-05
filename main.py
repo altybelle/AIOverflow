@@ -6,19 +6,23 @@ def main():
     parser = argparse.ArgumentParser(description="Fetch questions for a given year and pages.")
     parser.add_argument('-y', '--year', type=int, required=True, help="Year to fetch data for.")
     parser.add_argument('-p', '--page', type=int, required=True, help="Page number to start from.")
+    parser.add_argument('-m', '--multithread', type=bool, required=False, default=False, 
+                        action=argparse.BooleanOptionalAction, help='Activates multithreading')
 
     args = parser.parse_args()
 
     year = args.year
     page = args.page
+    multithread = args.multithread
 
     access_token = get_token()
 
     intervals = fullyear(year)
 
-    for interval in intervals:
-        # questions = fetch_questions_for_month(access_token=access_token, start_date=interval['start_date'], end_date=interval['end_date'], page)
-        save_questions([])
+    if multithread:
+        print(f'To be implemented...')
+    else:
+        sequential(access_token, intervals, page)
         
 if __name__ == '__main__':
     try:

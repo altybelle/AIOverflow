@@ -1,7 +1,7 @@
 from .fetch import fetch_questions_for_month
 from .database import save_questions, check_matching_questions
 from .logger import log
-import time, logging, threading
+import time, logging, multiprocessing
 
 def filter_questions(questions):
     fetch_ids = [ q['question_id'] for q in questions.get('items', [])]
@@ -50,50 +50,3 @@ def sequential(access_token, intervals, initial_page, exclude):
         page += 1
 
     log("All intervals have been processed.", level=logging.INFO)
-
-
-def multithreading(access_token, intervals, initial_page, exclude):
-    threads = []
-    exclusion = []
-
-    if exclude:
-        exclusion = [ int(ex) for ex in exclude.split(',') ]
-
-    for index, interval in enumerate(intervals):
-        if (index not in exclusion):
-            threads.append(threading.Thread(name=f't{index}', target=multithread_util, args=(access_token, interval['start_date'], interval['end_date'], initial_page)))
-
-    for thread in threads:
-        thread.start()
-
-    for thread in threads:
-        thread.join()
-
-def multithread_util(access_token, start_date, end_date, initial_page):
-
-    page = initial_page
-    last_page = False
-
-    while True:
-        log(f'Requesting questions from {start_date} to {end_date}, page = {page}.', level=logging.INFO)
-        response = fetch_questions_for_month(access_token, start_date, end_date, page)
-        log(f'Quota remaining: {response["quota_remaining"]}.', level=logging.INFO)
-
-        questions = filter_questions(response)
-
-        if len(questions) > 0:
-            save_questions(questions)
-            log(f'{len(questions)} registered in the database.', level=logging.INFO)
-        else:
-            log(f'Requested questions from {start_date} to {end_date} - No questions acquired.', level=logging.INFO)
-
-        if response['quota_remaining'] == 0:
-            log(f'Reached end of quota.', level=logging.WARN)
-            break
-
-        if response.get('has_more') == False:
-            log(f'Questions from {start_date} to {end_date} ended.', level=logging.WARN)
-            break
-
-        time.sleep(2.7)
-        page += 1

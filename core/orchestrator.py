@@ -1,19 +1,21 @@
 from .fetch import fetch_questions_for_month
 from .database import save_questions, check_matching_questions
 from .logger import log
-from concurrent.futures import ThreadPoolExecutor
-
-import time, logging
+import time, logging, threading
 
 def filter_questions(questions):
     fetch_ids = [ q['question_id'] for q in questions.get('items', [])]
     existing_ids = check_matching_questions(fetch_ids)
     return [ q for q in questions.get('items', []) if q['question_id'] not in existing_ids ]
 
-def sequential(access_token, intervals, initial_page):
+def sequential(access_token, intervals, initial_page, exclude):
     max_requests_per_second = 27
     page = initial_page
+
     exclusion = []
+
+    if exclude:
+        exclusion = [ int(ex) for ex in exclude.split(',') ]
 
     while len(exclusion) < len(intervals):
         for index, interval in enumerate(intervals):
@@ -22,6 +24,7 @@ def sequential(access_token, intervals, initial_page):
 
                 log(f'Requesting questions from {start_date} to {end_date}, page = {page}.', level=logging.INFO)
                 response = fetch_questions_for_month(access_token, start_date, end_date, page)
+                log(f'Quota remaining: {response["quota_remaining"]}.', level=logging.INFO)
 
                 questions = filter_questions(response)
 
@@ -48,10 +51,49 @@ def sequential(access_token, intervals, initial_page):
 
     log("All intervals have been processed.", level=logging.INFO)
 
-def multithreading(access_token, intervals, initial_page):
-    tasks = []
-    with ThreadPoolExecutor(max_workers=12) as tpe:
-        tasks.append(tpe.submit())
 
-    return 0
+def multithreading(access_token, intervals, initial_page, exclude):
+    threads = []
+    exclusion = []
 
+    if exclude:
+        exclusion = [ int(ex) for ex in exclude.split(',') ]
+
+    for index, interval in enumerate(intervals):
+        if (index not in exclusion):
+            threads.append(threading.Thread(name=f't{index}', target=multithread_util, args=(access_token, interval['start_date'], interval['end_date'], initial_page)))
+
+    for thread in threads:
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+def multithread_util(access_token, start_date, end_date, initial_page):
+
+    page = initial_page
+    last_page = False
+
+    while True:
+        log(f'Requesting questions from {start_date} to {end_date}, page = {page}.', level=logging.INFO)
+        response = fetch_questions_for_month(access_token, start_date, end_date, page)
+        log(f'Quota remaining: {response["quota_remaining"]}.', level=logging.INFO)
+
+        questions = filter_questions(response)
+
+        if len(questions) > 0:
+            save_questions(questions)
+            log(f'{len(questions)} registered in the database.', level=logging.INFO)
+        else:
+            log(f'Requested questions from {start_date} to {end_date} - No questions acquired.', level=logging.INFO)
+
+        if response['quota_remaining'] == 0:
+            log(f'Reached end of quota.', level=logging.WARN)
+            break
+
+        if response.get('has_more') == False:
+            log(f'Questions from {start_date} to {end_date} ended.', level=logging.WARN)
+            break
+
+        time.sleep(2.7)
+        page += 1

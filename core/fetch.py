@@ -1,6 +1,6 @@
 from .logger import log
 
-import requests, os
+import requests, os, logging
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -26,5 +26,5 @@ def fetch_questions_for_month(access_token, start_date, end_date, page):
     if response.status_code == 200:
         return response.json()
     else:
-        log(f'Erro ao buscar dados: {response.status_code} - {response.text}', logging.ERROR)
+        log(f'Error while trying to fetch data: {response.status_code} - {response.text}', logging.ERROR)
         return None
